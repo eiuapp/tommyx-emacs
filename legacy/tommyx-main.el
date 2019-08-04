@@ -1,5 +1,6 @@
 ;;; imports
 
+(enable-auto-compilation 'tommyx-main-def)
 (require 'tommyx-main-def)
 
 
@@ -165,7 +166,7 @@
 (global-auto-revert-mode t)
 
 ;; profiler
-(setq profiler-max-stack-depth 64)
+(setq profiler-max-stack-depth 128)
 
 ;; auto start server if on GUI
 (when window-system
@@ -249,7 +250,7 @@
 ;; (defface minibuffer-background
 ;;   '((t (:inherit default)))
 ;;   "*Face used for the minibuffer."
-;;   :group 'appearence)
+;;   :group 'appearance)
 ;; (add-hook 'minibuffer-setup-hook
 ;;           (lambda ()
 ;;             (make-local-variable 'face-remapping-alist)
@@ -257,9 +258,9 @@
 
 ;; sidebar face
 (defface sidebar-background
-  '((t (:inherit default)))
+  '((t :inherit default))
   "*Face used for the sidebar."
-  :group 'appearence)
+  :group 'appearance)
 
 ;; undo limits
 (setq undo-limit 1000000)
@@ -291,9 +292,13 @@
 
 (require 'tommyx-bind-def)
 
+(enable-auto-compilation 'redo+)
 (require 'redo+)
+(enable-auto-compilation 'font-lock+)
 (require 'font-lock+)
+(enable-auto-compilation 'hl-line+)
 (require 'hl-line+)
+(enable-auto-compilation 'info+)
 (require 'info+)
 
 (use-package package-lint :ensure t)
@@ -893,8 +898,7 @@ Useful for a search overview popup."
           (cond
            ((string-match "move to window 1" (cdr cell)) '("[0-9]" . "move to window [0-9]"))
            ((string-match "move to window [0-9]" (cdr cell)) nil)
-           (cell))))
-  )
+           (cell)))))
 
 (use-package spacemacs-theme :ensure t :defer t)
 
@@ -936,21 +940,15 @@ Useful for a search overview popup."
 ;; (require 'highlight-indent-guides) ; my own version
 ;; (require 'indent-hint)
 
-(use-package highlight-indentation :ensure t
-  ;; TODO: we want to load our own version
-  :config
-  (let* ((file-name
-          (expand-file-name
-           "packages/Highlight-Indentation-for-Emacs/highlight-indentation.el"
-           tommyx-config-path))
-         (compiled-file-name
-          (byte-compile-dest-file file-name)))
-    (enable-auto-compilation file-name)
-    (load compiled-file-name))
-
-  (setq highlight-indentation-blank-lines t)
-  (add-hook 'prog-mode-hook 'highlight-indentation-mode)
-  (add-hook 'text-mode-hook 'highlight-indentation-mode))
+;; TODO: loading our own version
+(add-to-list 'load-path (expand-file-name
+                         "packages/Highlight-Indentation-for-Emacs"
+                         tommyx-config-path))
+(enable-auto-compilation 'highlight-indentation)
+(require 'highlight-indentation)
+(setq highlight-indentation-blank-lines t)
+(add-hook 'prog-mode-hook 'highlight-indentation-mode)
+(add-hook 'text-mode-hook 'highlight-indentation-mode)
 
 (require 'origami)
 (add-to-list 'origami-parser-alist
@@ -1052,6 +1050,8 @@ Useful for a search overview popup."
 
 (use-package flycheck :ensure t
   :config
+  (setq-default flycheck-idle-change-delay 3)
+  (setq-default flycheck-check-syntax-automatically '(idle-change save mode-enabled))
   (global-flycheck-mode 1))
 
 (use-package flyspell-lazy :ensure t
@@ -1149,10 +1149,46 @@ Useful for a search overview popup."
 
 (use-package company :ensure t
   :config
+  ;; TODO: should we remove the existing backends?
   (make-variable-buffer-local 'company-backends)
   (add-hook 'after-init-hook 'global-company-mode)
   (company-tng-configure-default)
   ;; (company-quickhelp-mode)
+
+  (defface company-preview-active-face
+    '((t :inherit company-preview))
+    "Face used for company preview when nothing is selected."
+    :group 'appearance)
+
+  ;; Patch `company-preview-frontend'.
+  (defun company-preview-frontend (command)
+    "`company-mode' frontend showing the selection as if it had been inserted."
+    (pcase command
+      (`pre-command (company-preview-hide))
+      (`post-command
+       ;; TODO: should we make this run-at-time 0?
+       (let* ((completion
+               (nth company-selection company-candidates))
+              (completion-length (length completion))
+              (prefix-length (length company-prefix)))
+         (when (>= completion-length prefix-length)
+           (company-preview-show-at-point
+            (point) completion)
+           (let ((ov company-preview-overlay))
+             (when (and ov company-selection-changed)
+               (overlay-put ov 'after-string nil)
+               (overlay-put ov 'display nil)
+               (move-overlay ov (max (point-min) (- (point) prefix-length))
+                             (point))
+               (overlay-put
+                ov (if (> prefix-length 0)
+                       'display
+                     'after-string)
+                (propertize
+                 (substring-no-properties
+                  completion)
+                 'face 'company-preview-active-face)))))))
+      (`hide (company-preview-hide))))
 
   ;; Patch tng front-end to not show overlay.
   (defun company-tng-frontend (command)
@@ -1164,7 +1200,7 @@ confirm the selection and finish the completion."
       (show
        (advice-add 'company-select-next :before-until 'company-tng--allow-unselected)
        (advice-add 'company-fill-propertize :filter-args 'company-tng--adjust-tooltip-highlight))
-      (update)
+      ;; (update)
       (hide
        (advice-remove 'company-select-next 'company-tng--allow-unselected)
        (advice-remove 'company-fill-propertize 'company-tng--adjust-tooltip-highlight))
@@ -1175,6 +1211,19 @@ confirm the selection and finish the completion."
          (setq this-command 'company-complete-selection)
          (advice-add 'company-call-backend :before-until 'company-tng--supress-post-completion)))))
   
+  (defvar company-echo-metadata-frontend-bypass nil)
+
+  ;; Patch echo-metadata frontend to allow bypassing.
+  (defun company-echo-metadata-frontend (command)
+    "`company-mode' frontend showing the documentation in the echo area."
+    (pcase command
+      (`post-command
+       (if company-echo-metadata-frontend-bypass
+           (setq company-echo-metadata-frontend-bypass nil)
+         (when company-selection-changed
+           (company-echo-show-when-idle 'company-fetch-metadata))))
+      (`hide (company-echo-hide))))
+
   (setq my-company--company-command-p-override nil)
   (defun my-company--company-command-p (func &rest args)
     "Patch company-mode to treat key sequences like \"jp\" not a company-mode command.
@@ -1293,9 +1342,7 @@ to have \"j\" as a company-mode command (so do not complete) but not to have
 ;;                 (cons #'company-lsp company-backends)))
 
 (use-package company-ycmd :ensure t
-  :config
-  (setq-default company-backends
-                (cons #'company-ycmd company-backends)))
+  :config)
 
 ;; (require 'company-tabnine)
 
@@ -1825,6 +1872,7 @@ DEPTH is the depth of the entry in the list."
 ;;  (purpose-mode)
 ;; )
 
+(enable-auto-compilation 'companion)
 (require 'companion)
 ;; TODO: The following fix bug with companion's separator
 (add-hook 'after-init-hook
@@ -1894,7 +1942,13 @@ DEPTH is the depth of the entry in the list."
             (awk-mode . "awk")
             (other . "linux")))
 
-    (add-hook 'c++-mode-hook (lambda () (ycmd-mode 1)))
+    (add-hook
+     'c++-mode-hook
+     (lambda ()
+       (ycmd-mode 1)
+       (setq-local company-backends
+                   (append '(company-tabnine company-ycmd)
+                           company-backends))))
 
     ;; bindings
 
@@ -1943,7 +1997,13 @@ DEPTH is the depth of the entry in the list."
   (use-package csharp-mode :ensure t
     :config
     (setup-color-identifiers-parser 'c 'csharp-mode)
-    (add-hook 'csharp-mode-hook (lambda () (ycmd-mode 1)))
+    (add-hook
+     'csharp-mode-hook
+     (lambda ()
+       (ycmd-mode 1)
+       (setq-local company-backends
+                   (append '(company-tabnine company-ycmd)
+                           company-backends))))
 
     ;; bindings
 
@@ -2067,7 +2127,7 @@ DEPTH is the depth of the entry in the list."
        python-shell-send-buffer
        :which-key "Eval Buffer In Python"))))
 
-  (use-package elpy :ensure t
+  (use-package elpy :ensure t :defer t
     :init
     (elpy-enable)
 
@@ -2224,7 +2284,7 @@ DEPTH is the depth of the entry in the list."
     :config
     (add-hook 'css-mode-hook 'counsel-css-imenu-setup))
 
-  (add-hook 'css-mode-hook  'emmet-mode)
+  (add-hook 'css-mode-hook 'emmet-mode)
 
   (dolist (hook '(css-mode-hook))
     (add-hook
@@ -2319,7 +2379,9 @@ DEPTH is the depth of the entry in the list."
   ;;   (newline))
   ;; TODO: if we do not want to indent, comment this
   (save-excursion
-    (newline-and-indent))
+    (newline)
+    (unless (eolp)
+      (indent-according-to-mode)))
   (indent-according-to-mode))
 
 (defun update-heavy-tasks () (interactive)
@@ -2433,6 +2495,7 @@ This function uses `emms-show-format' to format the current track."
 
 (defun company-smart-complete ()
   (interactive)
+  (setq company-echo-metadata-frontend-bypass t)
   (cond
    (company-selection-changed
     (company-complete-selection))
@@ -3295,6 +3358,9 @@ command (ran after) is mysteriously incorrect."
       "m" (:def
            ace-swap-window
            :which-key "Swap Window")
+      "f" (:def
+           delete-other-windows
+           :which-key "Delete Other Windows")
       "q" (:def
            ,(lambda () (interactive)
               (evil-quit)
@@ -3388,7 +3454,7 @@ command (ran after) is mysteriously incorrect."
              :which-key "Search In Directory")
       "C-S-d" (:def
                ,(lambda () (interactive)
-                  (counsel-rg (selection-or-word-at-point)))
+                  (counsel-rg (selection-or-word-at-point t)))
                :which-key "Search Cursor In Directory")
       "d" (:def
            counsel-projectile-rg

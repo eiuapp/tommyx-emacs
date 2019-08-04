@@ -1,6 +1,6 @@
 ;; requires
 (require 'projectile)
-(require 'tommyx-key-binding-framework)
+(require 'tommyx-bind-def)
 
 ;; general config
 (setq compile-command "")
@@ -13,13 +13,13 @@
 (setq projectile-globally-ignored-directories (append '("node_modules" "dist" "bin" "build") projectile-globally-ignored-directories))
 
 ;; TODO: temporary bug fix
-;; (setq projectile-project-compilation-cmd "")
+(setq projectile-project-compilation-cmd "")
 
 ;; helper functions
 (defun project/project-relative-name ()
-  "Return the project-relative file name of 'buffer-file-name'."
-  (ignore-errors (file-relative-name
-                  buffer-file-name (projectile-project-root))))
+	"Return the project-relative file name of 'buffer-file-name'."
+	(ignore-errors (file-relative-name
+									buffer-file-name (projectile-project-root))))
 
 ;; project definitions
 (defun project-cp-run ()
@@ -27,54 +27,53 @@
   (cond
    ((eq major-mode 'c++-mode)
     (concat (if (eq system-type 'windows-nt)
-                "cl /EHsc /W4 /out:a.exe \""
-              "g++ -Wall -std=c++11 -o a.exe \"")
-            (project/project-relative-name)
-            "\""))
+								"cl /EHsc /W4 /out:a.exe \""
+							"g++ -Wall -std=c++11 -o a.exe \"")
+						(project/project-relative-name)
+						"\""))
    ((eq major-mode 'python-mode)
     (concat "python \""
-            (project/project-relative-name)
-            "\""))
+						(project/project-relative-name)
+						"\""))
    ))
 (projectile-register-project-type 'cp '("cp.txt")
-                                  :compile #'project-cp-run
-                                  :run #'project-cp-run)
+	                                :compile #'project-cp-run
+	                                :run #'project-cp-run)
 
 ;; key bindings
-($bind-keys
+(tommyx-bind-keys
  `(:case
    :states (motion normal visual)
    
-   (:bindings
+	 (:bindings
 
     project-prefix
     (:bindings
 
-     "p" (:def
+	   "p" (:def
           counsel-projectile-switch-project
-          :which-key "Switch Project")
-     "w" (:def
+		      :which-key "Switch Project")
+	   "w" (:def
           persp-switch
-          :which-key "Switch Workspace")
-     "n" (:def
+		      :which-key "Switch Workspace")
+	   "n" (:def
           persp-rename
-          :which-key "Rename Workspace")
-     "d" (:def
-          ;; persp-kill
-          projectile-edit-dir-locals
-          :which-key "Edit dir-locals Config")
-     "R" (:def
+		      :which-key "Rename Workspace")
+	   "d" (:def
+          persp-kill
+		      :which-key "Delete Workspace")
+	   "R" (:def
           projectile-invalidate-cache
-          :which-key "Re-index Project Files")
-     "r" (:def
+		      :which-key "Re-index Project Files")
+	   "r" (:def
           projectile-run-project
-          :which-key "Run Project")
-     "c" (:def
+		      :which-key "Run Project")
+	   "c" (:def
           compile
-          :which-key "Compile")
-     "C" (:def
+		      :which-key "Compile")
+	   "C" (:def
           projectile-compile-project
-          :which-key "Compile Project")
+		      :which-key "Compile Project")
      "C-c" (:def
             kill-compilation
             :which-key "Kill Compilation")
@@ -93,10 +92,7 @@
           :which-key "Open Project Eshell")
      "s" (:def
           shell-command
-          :which-key "Shell Command")
-     "S" (:def
-          async-shell-command
-          :which-key "Async Shell Command")))))
+          :which-key "Shell Command")))))
 
 
 (provide 'tommyx-project)

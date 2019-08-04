@@ -11,6 +11,7 @@
 (require 'companion)
 (require 'hydra)
 (require 'smartparens)
+(enable-auto-compilation 'tommyx-org-def)
 (require 'tommyx-org-def)
 (require 'tommyx-bind-def)
 
@@ -235,18 +236,31 @@
 
 ;;; key bindings
 
-;; hydra
-(defhydra hydra-org-nav ()
-  "org heading navigation"
-  ("h" org-up-heading-custom "parent heading")
-  ("l" outline-next-heading "next heading")
-  ("k" org-backward-heading-same-level-custom "previous heading same level")
-  ("j" org-forward-heading-same-level "next heading same level"))
+;; helpers
 
+(evil-define-motion evil-org-up-heading () :type exclusive
+  (if (org-at-heading-p)
+      (org-up-heading-safe)
+    (org-back-to-heading)))
+(evil-define-motion evil-outline-next-heading () :type exclusive
+  (outline-next-heading))
+(evil-define-motion evil-org-backward-heading-same-level () :type exclusive
+  (if (org-at-heading-p)
+      (org-backward-heading-same-level 1)
+    (org-back-to-heading)))
+(evil-define-motion evil-org-forward-heading-same-level () :type exclusive
+  (org-forward-heading-same-level 1))
 (evil-define-motion evil-org-next-visible-heading () :type exclusive
   (org-next-visible-heading 1))
 (evil-define-motion evil-org-previous-visible-heading () :type exclusive
   (org-previous-visible-heading 1))
+
+(defhydra hydra-org-nav ()
+  "org heading navigation"
+  ("h" evil-org-up-heading "parent heading")
+  ("l" evil-outline-next-heading "next heading")
+  ("k" evil-org-backward-heading-same-level "previous heading same level")
+  ("j" evil-org-forward-heading-same-level "next heading same level"))
 
 (tommyx-bind-keys
  `(:case
@@ -377,10 +391,10 @@
 
     "t" hydra-org-nav/body
 
-    goto-parent-semantic-element org-up-heading-custom
-    goto-child-semantic-element outline-next-heading
-    goto-previous-semantic-element org-backward-heading-same-level-custom
-    goto-next-semantic-element org-forward-heading-same-level
+    goto-parent-semantic-element evil-org-up-heading
+    goto-child-semantic-element evil-outline-next-heading
+    goto-previous-semantic-element evil-org-backward-heading-same-level
+    goto-next-semantic-element evil-org-forward-heading-same-level
 
     find-semantic-item
     (:def
@@ -738,6 +752,7 @@
 
   ;;; my org-life
 
+  (enable-auto-compilation 'org-life)
   (require 'org-life)
   (setq org-life-config-file-path
         (expand-file-name "org-life-config.org" org-directory))
@@ -749,6 +764,7 @@
 
   ;;; my org-catalyst
 
+  (enable-auto-compilation 'org-catalyst)
   (require 'org-catalyst)
   (add-hook 'org-catalyst-mode-hook
             (lambda ()
